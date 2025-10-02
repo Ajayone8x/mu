@@ -63,22 +63,18 @@
     </main>
 
     <script>
-        const M3U_URL = prompt("Please enter the M3U URL:", "https://raw.githubusercontent.com/johannsolo/testing/main/johann.m3u");
+        // Set the M3U URL directly here
+        const M3U_URL = "https://raw.githubusercontent.com/xaaMee/ee/980bad1ffe62e0e1cd3b4d3cc9ec5384f4203f52/master.m3u";
         const channelsGrid = document.getElementById('channels-grid');
         const searchInput = document.getElementById('search-input');
         const noResultsMsg = document.getElementById('no-results');
         let channels = [];
 
-        // Improved parser to handle multi-line channel data
         async function fetchAndParseM3U() {
-            if (!M3U_URL) {
-                 channelsGrid.innerHTML = `<p class="text-red-500 text-center col-span-full">No M3U URL provided. Please refresh and enter a valid URL.</p>`;
-                 return;
-            }
             showLoadingSkeletons();
             try {
                 const response = await fetch(M3U_URL);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                if (!response.ok) throw new Error(`Could not fetch M3U file (Status: ${response.status}). The URL may be incorrect or offline.`);
                 const text = await response.text();
                 
                 const lines = text.split('\n');
@@ -87,7 +83,6 @@
 
                 for (const line of lines) {
                     if (line.startsWith('#EXTINF:')) {
-                        // Start of a new channel entry
                         currentChannel = {};
                         const info = line.match(/tvg-logo="([^"]*)"(?: group-title="([^"]*)")?,(.+)/);
                         if (info) {
@@ -96,16 +91,12 @@
                             currentChannel.name = info[3].trim();
                         }
                     } else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=') && currentChannel) {
-                        // Found the license key for the current channel
                         currentChannel.licenseUrl = line.split('=')[1].trim();
                     } else if (line.trim() && !line.startsWith('#') && currentChannel) {
-                        // Found the stream URL, finalizing the channel object
                         currentChannel.streamUrl = line.trim();
-                        // Only add if we have the essential parts
                         if (currentChannel.name && currentChannel.streamUrl && currentChannel.licenseUrl) {
                             parsedChannels.push(currentChannel);
                         }
-                        // Reset for the next channel
                         currentChannel = null; 
                     }
                 }
@@ -113,7 +104,7 @@
                 renderChannels(channels);
             } catch (error) {
                 console.error("Failed to load M3U playlist:", error);
-                channelsGrid.innerHTML = `<p class="text-red-500 text-center col-span-full">Failed to load channels. The M3U URL might be invalid or blocked by CORS.</p>`;
+                channelsGrid.innerHTML = `<p class="text-red-500 text-center col-span-full">${error.message}</p>`;
             }
         }
 
