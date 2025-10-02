@@ -2,116 +2,150 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Shaka Stream Player</title>
+    <title>IPTV Channel Browser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
-    
-    <script src="https://ajax.googleapis.com/ajax/libs/shaka-player/4.3.4/shaka-player.ui.js"></script>
-    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/shaka-player/4.3.4/controls.css">
-    
     <style>
-        body {
-            height: 100svh;
-            display: flex;
-            flex-direction: column;
-            background-color: #02040a;
-            font-family: 'Inter', sans-serif;
-            color: white;
-            overflow: hidden;
-        }
-        .player-main {
-            flex-grow: 1;
-            background-color: #000;
-            min-height: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        /* Shaka Player UI Customization */
         :root {
-            --shaka-controls-button-color: white;
-            --shaka-controls-color: white;
-            --shaka-controls-icon-color: white;
-            --shaka-range-track-color: rgba(255, 255, 255, 0.3);
-            --shaka-range-thumb-color: #0ea5e9;
-            --shaka-range-fill-color: #0ea5e9;
+            --background: #02040a;
+            --card-bg: rgba(15, 23, 42, 0.6);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --primary-glow: #0ea5e9;
         }
-        .error-message { text-align: center; padding: 2rem; }
+        body { background-color: var(--background); font-family: 'Inter', sans-serif; }
+        body::-webkit-scrollbar { display: none; }
+        body { -ms-overflow-style: none; scrollbar-width: none; }
+        .channel-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+        .channel-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary-glow);
+            box-shadow: 0 10px 30px -10px rgba(14, 165, 233, 0.3);
+        }
+        .channel-logo-container { background-color: rgba(2, 6, 23, 0.5); }
+        .channel-logo { object-fit: contain; }
+        .search-input {
+            background-color: #1e293b;
+            border: 1px solid var(--border-color);
+        }
+        .search-input:focus {
+            border-color: var(--primary-glow);
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.4);
+            outline: none;
+        }
     </style>
 </head>
-<body>
-    <header class="flex-shrink-0 p-4 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
-        <div class="flex items-center min-w-0">
-            <img id="channel-logo" src="" class="h-8 w-8 mr-3 rounded-full bg-slate-700" alt="logo">
-            <h1 id="channel-name-header" class="text-lg font-bold truncate">Loading...</h1>
-        </div>
-        <a href="index.html" class="px-4 py-2 bg-sky-600 rounded-lg font-semibold hover:bg-sky-500 transition-colors">
-            Back
-        </a>
+<body class="text-slate-200">
+
+    <header class="text-center py-12 px-4">
+        <h1 class="text-4xl md:text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-amber-400">
+            IPTV Player
+        </h1>
+        <p class="text-slate-400 mt-2">Select a channel to start streaming.</p>
     </header>
 
-    <main class="player-main">
-        <div data-shaka-player-container style="width: 100%; height: 100%;">
-            <video autoplay data-shaka-player id="player" style="width:100%; height:100%;"></video>
+    <main class="max-w-7xl mx-auto px-4 pb-12">
+        <div class="mb-8 sticky top-4 z-10">
+            <div class="relative">
+                <input type="text" id="search-input" placeholder="Search for a channel..." class="search-input w-full py-3 pl-12 pr-4 rounded-full placeholder-slate-500 transition-all">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+            </div>
         </div>
+        
+        <div id="channels-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            </div>
+        <p id="no-results" class="text-center text-slate-400 col-span-full hidden">No channels found.</p>
     </main>
 
     <script>
-        const playerElement = document.getElementById('player');
-        const channelNameHeader = document.getElementById('channel-name-header');
-        const channelLogo = document.getElementById('channel-logo');
-        const mainContent = document.querySelector('.player-main');
+        // Set the M3U URL directly here
+        const M3U_URL = "https://raw.githubusercontent.com/xaaMee/ee/980bad1ffe62e0e1cd3b4d3cc9ec5384f4203f52/master.m3u";
+        const channelsGrid = document.getElementById('channels-grid');
+        const searchInput = document.getElementById('search-input');
+        const noResultsMsg = document.getElementById('no-results');
+        let channels = [];
 
-        async function initPlayer() {
-            const params = new URLSearchParams(window.location.search);
-            const streamUrl = params.get('streamUrl');
-            const licenseUrl = params.get('licenseUrl');
-            const name = params.get('name');
-            const logo = params.get('logo');
-
-            if (!streamUrl || !licenseUrl) {
-                showError("Error: Stream URL or License URL is missing.");
-                return;
-            }
-
-            channelNameHeader.textContent = name || 'Live Stream';
-            channelLogo.src = logo || '';
-
-            const player = new shaka.Player(playerElement);
-            
-            // Configure DRM for Widevine
-            player.configure({
-                drm: {
-                    servers: { 'com.widevine.alpha': licenseUrl }
-                }
-            });
-
-            // Listen for errors from the player
-            player.addEventListener('error', onErrorEvent);
-
+        async function fetchAndParseM3U() {
+            showLoadingSkeletons();
             try {
-                await player.load(streamUrl);
-                console.log('The video has now been loaded!');
-            } catch (e) {
-                onError(e); // Shaka Player error
+                const response = await fetch(M3U_URL);
+                if (!response.ok) throw new Error(`Could not fetch M3U file (Status: ${response.status}). The URL may be incorrect or offline.`);
+                const text = await response.text();
+                
+                const lines = text.split('\n');
+                const parsedChannels = [];
+                let currentChannel = null;
+
+                for (const line of lines) {
+                    if (line.startsWith('#EXTINF:')) {
+                        currentChannel = {};
+                        const info = line.match(/tvg-logo="([^"]*)"(?: group-title="([^"]*)")?,(.+)/);
+                        if (info) {
+                            currentChannel.logo = info[1] || 'https://via.placeholder.com/150x150/0f172a/334155?text=No+Logo';
+                            currentChannel.group = info[2] || 'General';
+                            currentChannel.name = info[3].trim();
+                        }
+                    } else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=') && currentChannel) {
+                        currentChannel.licenseUrl = line.split('=')[1].trim();
+                    } else if (line.trim() && !line.startsWith('#') && currentChannel) {
+                        currentChannel.streamUrl = line.trim();
+                        if (currentChannel.name && currentChannel.streamUrl && currentChannel.licenseUrl) {
+                            parsedChannels.push(currentChannel);
+                        }
+                        currentChannel = null; 
+                    }
+                }
+                channels = parsedChannels;
+                renderChannels(channels);
+            } catch (error) {
+                console.error("Failed to load M3U playlist:", error);
+                channelsGrid.innerHTML = `<p class="text-red-500 text-center col-span-full">${error.message}</p>`;
             }
         }
 
-        function showError(message) {
-             mainContent.innerHTML = `<div class="error-message"><h2 class="text-2xl font-bold text-red-500 mb-4">Playback Error</h2><p class="text-slate-400">${message}</p></div>`;
-        }
+        function renderChannels(channelList) {
+            channelsGrid.innerHTML = '';
+            noResultsMsg.style.display = channelList.length === 0 ? 'block' : 'none';
 
-        function onErrorEvent(event) {
-            onError(event.detail);
-        }
-
-        function onError(error) {
-            console.error('Shaka Player Error:', error.code, 'Object', error);
-            showError(`<b>Error Code:</b> ${error.code}<br>Could not play the protected content. This might be due to a browser limitation, an invalid license key, or a network issue.`);
+            channelList.forEach(channel => {
+                const card = document.createElement('a');
+                card.className = 'channel-card rounded-lg overflow-hidden cursor-pointer block';
+                
+                const stream = encodeURIComponent(channel.streamUrl);
+                const license = encodeURIComponent(channel.licenseUrl);
+                const name = encodeURIComponent(channel.name);
+                const logo = encodeURIComponent(channel.logo);
+                
+                card.href = `player.html?streamUrl=${stream}&licenseUrl=${license}&name=${name}&logo=${logo}`;
+                
+                card.innerHTML = `
+                    <div class="channel-logo-container h-32 flex items-center justify-center p-2">
+                        <img src="${channel.logo}" alt="${channel.name}" class="channel-logo max-h-full max-w-full" onerror="this.onerror=null;this.src='https://via.placeholder.com/150x150/0f172a/334155?text=No+Logo';">
+                    </div>
+                    <div class="p-3">
+                        <h3 class="text-sm font-semibold truncate text-white">${channel.name}</h3>
+                    </div>
+                `;
+                channelsGrid.appendChild(card);
+            });
         }
         
-        document.addEventListener('shaka-ui-loaded', initPlayer);
+        function showLoadingSkeletons(count = 18) {
+            channelsGrid.innerHTML = Array(count).fill('').map(() => `<div class="bg-slate-800/50 rounded-lg h-48 animate-pulse"></div>`).join('');
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredChannels = channels.filter(c => c.name.toLowerCase().includes(searchTerm));
+            renderChannels(filteredChannels);
+        });
+
+        document.addEventListener('DOMContentLoaded', fetchAndParseM3U);
     </script>
 </body>
 </html>
