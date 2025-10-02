@@ -80,22 +80,31 @@
             const player = new shaka.Player(playerElement);
             
             // --- PLAYER FIX STARTS HERE ---
-            // Extract the deviceId from the license URL to use as custom data.
-            const deviceId = new URL(licenseUrl).searchParams.get('deviceId');
-
-            // Add a request filter to modify the license request before it's sent.
+            // This logic modifies the license request to add the specific headers 
+            // required by this particular stream provider.
             player.getNetworkingEngine().registerRequestFilter((type, request) => {
-                // This filter will only apply to license requests.
+                // We only want to modify license requests.
                 if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
-                    // Add the custom header the server expects.
-                    request.headers['customdata'] = deviceId;
-                    // Change the request method to POST.
+                    
+                    // 1. Extract the deviceId from the license URL.
+                    const url = new URL(request.uris[0]);
+                    const deviceId = url.searchParams.get('deviceId');
+
+                    // 2. Add the specific header the DRM provider expects.
+                    // This is the most critical part of the fix.
+                    if (deviceId) {
+                        request.headers['dt-custom-data'] = deviceId;
+                    }
+
+                    // 3. Ensure the request method is POST.
                     request.method = 'POST';
+                    
+                    // 4. Set the correct Content-Type for the raw license challenge.
+                    request.headers['Content-Type'] = 'application/octet-stream';
                 }
             });
             // --- PLAYER FIX ENDS HERE ---
 
-            // Configure DRM for Widevine with the base license server URL.
             player.configure({
                 drm: {
                     servers: { 'com.widevine.alpha': licenseUrl }
